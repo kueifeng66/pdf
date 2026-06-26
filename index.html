@@ -296,7 +296,7 @@
                 const mergedPdf = await PDFDocument.create();
                 for (const file of filesToCombine) {
                     const arrayBuffer = await file.arrayBuffer();
-                    const pdf = await PDFDocument.load(arrayBuffer);
+                   const pdf = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
                     const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
                     copiedPages.forEach((page) => mergedPdf.addPage(page));
                 }
@@ -397,7 +397,7 @@
 
             try {
                 const arrayBuffer = await fileToSplit.arrayBuffer();
-                const originalPdf = await PDFDocument.load(arrayBuffer);
+                const originalPdf = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true })
                 const maxPages = originalPdf.getPageCount();
                 
                 const pagesToExtract = parsePageRange(rangeInput, maxPages);
