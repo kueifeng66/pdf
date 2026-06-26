@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced PDF Toolkit</title>
+    <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+    <style>
+        html, body {
+				height: 100%;
+				margin: 0;
+		}
+
+		body {
+				font-family: Arial, sans-serif;
+				background: #f4f4f9;
+				padding: 20px;
+				box-sizing: border-box;
+
+				height: 100vh;
+				overflow: hidden;      /* No page scrolling */
+
+				display: flex;
+				flex-direction: column;
+		}
+		
+        h1, h2 {
+            color: #333;
+			margin: 0 0 20px;
+        }
+        .container {
+				flex: 1;
+				display: flex;
+				gap: 20px;
+				overflow: hidden;
+		}
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            flex: 1;
+			min-height: 500px; 
+            display: flex;
+            flex-direction: column;
+        }
+        .drop-zone {
+            border: 3px dashed #ccc;
+            border-radius: 8px;
+            padding: 90px 30px;
+			min-height: 220px; 
+            text-align: center;
+            color: #777;
+            cursor: pointer;
+            transition: background-color 0.3s, border-color 0.3s;
+            margin-bottom: 15px;
+        }
+        .drop-zone.dragover {
+            background-color: #e3f2fd;
+            border-color: #2196f3;
+            color: #2196f3;
+        }
+        .file-list {
+            font-size: 0.9em;
+            color: #555;
+            margin-bottom: 15px;
+            min-height: 150px;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            padding: 10px;
+            border-radius: 4px;
+            background: #fafafa;
+        }
+        /* Draggable File Item Styles */
+        .file-item {
+            display: flex;
+            align-items: center;
+            background: #fff;
+            padding: 8px 12px;
+            margin-bottom: 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: move;
+            user-select: none;
+            transition: transform 0.1s, background-color 0.2s;
+        }
+        .file-item.dragging {
+            opacity: 0.4;
+            background-color: #e0e0e0;
+        }
+        .drag-handle {
+            margin-right: 10px;
+            color: #999;
+            font-size: 1.2em;
+        }
+        .file-name {
+            flex-grow: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-right: 10px;
+        }
+        .remove-btn {
+            color: #ff5252;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1.2em;
+            padding: 0 5px;
+        }
+        .remove-btn:hover {
+            color: #d32f2f;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+            margin-top: auto;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>PDF Toolkit</h1>
+    
+    <div class="container">
+        <div class="card">
+            <h2>Combine PDFs</h2>
+            <div id="combine-drop-zone" class="drop-zone">
+                Drag & Drop PDFs here (Repeat to add more)
+            </div>
+            <div id="combine-file-list" class="file-list">No files selected</div>
+            <button id="btn-combine" disabled>OK (Combine)</button>
+        </div>
+
+        <div class="card">
+            <h2>Split PDF</h2>
+            <div id="split-drop-zone" class="drop-zone">
+                Drag & Drop a single PDF here
+            </div>
+            <div id="split-file-list" class="file-list">No file selected</div>
+            <label for="page-range">Pages to extract (e.g., 1, 3, 5-7):</label>
+            <input type="text" id="page-range" placeholder="1, 3, 5-7">
+            <button id="btn-split" disabled>Split</button>
+        </div>
+    </div>
+
+    <script>
+        const { PDFDocument } = PDFLib;
+
+        // Global arrays to hold file states
+        let filesToCombine = [];
+        let fileToSplit = null;
+
+        // --- Drag & Drop Utilities ---
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        // --- Helper to trigger downloads ---
+        function downloadPDF(pdfBytes, filename) {
+            const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            link.click();
+        }
+
+        // ==========================================
+        //  COMBINE SECTION LOGIC
+        // ==========================================
+        const combineDropZone = document.getElementById('combine-drop-zone');
+        
+        combineDropZone.addEventListener('dragover', (e) => { preventDefaults(e); combineDropZone.classList.add('dragover'); });
+        combineDropZone.addEventListener('dragleave', (e) => { preventDefaults(e); combineDropZone.classList.remove('dragover'); });
+        
+        combineDropZone.addEventListener('drop', (e) => {
+            preventDefaults(e);
+            combineDropZone.classList.remove('dragover');
+            
+            const newFiles = Array.from(e.dataTransfer.files).filter(file => file.type === 'application/pdf');
+            if (newFiles.length === 0) {
+                alert('Please drop PDF files only.');
+                return;
+            }
+
+            // 1. Collect files cumulatively and tag with a unique ID
+            newFiles.forEach(file => {
+                file.uniqueId = 'pdf-' + Math.random().toString(36).substr(2, 9);
+                filesToCombine.push(file);
+            });
+
+            renderCombineList();
+        });
+
+        let draggedItem = null;
+
+        // 2. Render and manage sorting of list items
+        function renderCombineList() {
+            const listContainer = document.getElementById('combine-file-list');
+            listContainer.innerHTML = '';
+            
+            if (filesToCombine.length === 0) {
+                listContainer.innerText = 'No files selected';
+                document.getElementById('btn-combine').disabled = true;
+                return;
+            }
+            
+            document.getElementById('btn-combine').disabled = false;
+
+            filesToCombine.forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'file-item';
+                item.draggable = true;
+                item.dataset.id = file.uniqueId;
+                
+                item.innerHTML = `
+                    <span class="drag-handle">☰</span>
+                    <span class="file-name" title="${file.name}">${file.name}</span>
+                    <span class="remove-btn">&times;</span>
+                `;
+
+                // Handle file removal
+                item.querySelector('.remove-btn').addEventListener('click', () => {
+                    filesToCombine = filesToCombine.filter(f => f.uniqueId !== file.uniqueId);
+                    renderCombineList();
+                });
+
+                // HTML5 Drag & Drop sorting listeners
+                item.addEventListener('dragstart', () => {
+                    draggedItem = item;
+                    setTimeout(() => item.classList.add('dragging'), 0);
+                });
+
+                item.addEventListener('dragend', () => {
+                    item.classList.remove('dragging');
+                    draggedItem = null;
+                    syncArrayOrder(); // Re-sync the core array with visual DOM layout
+                });
+
+                item.addEventListener('dragover', (e) => {
+                    preventDefaults(e);
+                    const bounding = item.getBoundingClientRect();
+                    const offset = e.clientY - bounding.top - (bounding.height / 2);
+                    
+                    if (offset > 0) {
+                        item.after(draggedItem);
+                    } else {
+                        item.before(draggedItem);
+                    }
+                });
+
+                listContainer.appendChild(item);
+            });
+        }
+
+        // Synchronize the backing array with the updated visual DOM order
+        function syncArrayOrder() {
+            const items = Array.from(document.querySelectorAll('#combine-file-list .file-item'));
+            const sortedArray = [];
+            items.forEach(item => {
+                const id = item.dataset.id;
+                const file = filesToCombine.find(f => f.uniqueId === id);
+                if (file) sortedArray.push(file);
+            });
+            filesToCombine = sortedArray;
+        }
+
+        // Executing the merge operation
+        document.getElementById('btn-combine').addEventListener('click', async () => {
+            try {
+                const mergedPdf = await PDFDocument.create();
+                for (const file of filesToCombine) {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await PDFDocument.load(arrayBuffer);
+                    const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+                    copiedPages.forEach((page) => mergedPdf.addPage(page));
+                }
+                const pdfBytes = await mergedPdf.save();
+                downloadPDF(pdfBytes, 'combined.pdf');
+            } catch (error) {
+                alert('Error combining PDFs: ' + error.message);
+            }
+        });
+
+
+        // ==========================================
+        //  SPLIT SECTION LOGIC
+        // ==========================================
+        const splitDropZone = document.getElementById('split-drop-zone');
+        const splitFileList = document.getElementById('split-file-list');
+        const btnSplit = document.getElementById('btn-split');
+
+		renderSplitFile();
+        splitDropZone.addEventListener('dragover', (e) => { preventDefaults(e); splitDropZone.classList.add('dragover'); });
+        splitDropZone.addEventListener('dragleave', (e) => { preventDefaults(e); splitDropZone.classList.remove('dragover'); });
+        
+        splitDropZone.addEventListener('drop', (e) => {
+            preventDefaults(e);
+            splitDropZone.classList.remove('dragover');
+            
+            let files = Array.from(e.dataTransfer.files).filter(file => file.type === 'application/pdf');
+            if (files.length === 0) {
+                alert('Please drop a PDF file only.');
+                return;
+            }
+
+            fileToSplit = files[0];
+			renderSplitFile();
+        });
+
+        function parsePageRange(rangeStr, maxPages) {
+            const pages = new Set();
+            const parts = rangeStr.split(',');
+            for (let part of parts) {
+                part = part.trim();
+                if (part.includes('-')) {
+                    const [start, end] = part.split('-').map(Number);
+                    if (start > 0 && end >= start && start <= maxPages) {
+                        for (let i = start; i <= Math.min(end, maxPages); i++) {
+                            pages.add(i - 1);
+                        }
+                    }
+                } else {
+                    const page = Number(part);
+                    if (page > 0 && page <= maxPages) {
+                        pages.add(page - 1);
+                    }
+                }
+            }
+            return Array.from(pages).sort((a, b) => a - b);
+        }
+		
+		
+		
+		function renderSplitFile() {
+				splitFileList.innerHTML = "";
+
+				// No file selected
+				if (!fileToSplit) {
+					splitFileList.innerHTML = "No file selected";
+					btnSplit.disabled = true;
+					return;
+				}
+
+				// Create file row
+				const item = document.createElement("div");
+				item.className = "file-item";
+				item.style.cursor = "default";
+
+				item.innerHTML = `
+					<span class="file-name" title="${fileToSplit.name}">${fileToSplit.name}</span>
+					<span class="remove-btn">&times;</span>
+				`;
+
+				// Remove button
+				item.querySelector(".remove-btn").addEventListener("click", () => {
+					fileToSplit = null;
+					renderSplitFile();
+
+					// Optional: clear page range textbox
+					document.getElementById("page-range").value = "";
+				});
+
+				splitFileList.appendChild(item);
+				btnSplit.disabled = false;
+		}
+
+        btnSplit.addEventListener('click', async () => {
+            const rangeInput = document.getElementById('page-range').value;
+            if (!rangeInput) {
+                alert('Please enter a page range.');
+                return;
+            }
+
+            try {
+                const arrayBuffer = await fileToSplit.arrayBuffer();
+                const originalPdf = await PDFDocument.load(arrayBuffer);
+                const maxPages = originalPdf.getPageCount();
+                
+                const pagesToExtract = parsePageRange(rangeInput, maxPages);
+                
+                if (pagesToExtract.length === 0) {
+                    alert('Invalid page range or pages exceed document length.');
+                    return;
+                }
+
+                const newPdf = await PDFDocument.create();
+                const copiedPages = await newPdf.copyPages(originalPdf, pagesToExtract);
+                copiedPages.forEach((page) => newPdf.addPage(page));
+
+                const pdfBytes = await newPdf.save();
+                downloadPDF(pdfBytes, 'split.pdf');
+            } catch (error) {
+                alert('Error splitting PDF: ' + error.message);
+            }
+        });
+    </script>
+</body>
+</html>
