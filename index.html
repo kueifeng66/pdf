@@ -7,50 +7,50 @@
     <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
     <style>
         html, body {
-				height: 100%;
-				margin: 0;
-		}
-		
-		body {
-				font-family: Arial, sans-serif;
-				background: #f4f4f9;
-				padding: 20px;
-				box-sizing: border-box;
+            height: 100%;
+            margin: 0;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f4f9;
+            padding: 20px;
+            box-sizing: border-box;
 
-				height: 100vh;
-				overflow: hidden;      /* No page scrolling */
+            height: 100vh;
+            overflow: hidden;
 
-				display: flex;
-				flex-direction: column;
-		}
-		
+            display: flex;
+            flex-direction: column;
+        }
+        
         h1, h2 {
             color: #333;
-			margin: 0 0 0;
+            margin: 0 0 0;
         }
         .container {
-				flex: 1;
-				display: flex;
-				gap: 20px;
-				overflow: hidden;
-		}
+            flex: 1;
+            display: flex;
+            gap: 20px;
+            overflow: hidden;
+        }
         .card {
             background: white;
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             flex: 1;
-			min-height: 500px; 
+            min-height: 500px; 
             display: flex;
             flex-direction: column;
-			overflow: hidden;
+            overflow: hidden;
         }
         .drop-zone {
-		    flex: 0 0 150px;
+            flex: 0 0 150px;
             border: 3px dashed #ccc;
             border-radius: 8px;
             padding: 90px 30px;
-			min-height: 180px; 
+            min-height: 180px; 
             text-align: center;
             color: #777;
             cursor: pointer;
@@ -66,11 +66,10 @@
             font-size: 0.9em;
             color: #555;
             margin-bottom: 15px;
-			flex: 1;
-			overflow-y: auto;
+            flex: 1;
+            overflow-y: auto;
             min-height: 0px;
             max-height: 300px;
-            overflow-y: auto;
             border: 1px solid #eee;
             padding: 10px;
             border-radius: 4px;
@@ -115,6 +114,20 @@
         .remove-btn:hover {
             color: #d32f2f;
         }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 15px;
+            font-size: 0.95em;
+            color: #333;
+            cursor: pointer;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
         input[type="text"] {
             width: 100%;
             padding: 10px;
@@ -122,6 +135,10 @@
             border: 1px solid #ccc;
             border-radius: 4px;
             box-sizing: border-box;
+        }
+        input[type="text"]:disabled {
+            background-color: #f0f0f0;
+            cursor: not-allowed;
         }
         button {
             background-color: #4CAF50;
@@ -163,7 +180,13 @@
                 Drag & Drop a single PDF here
             </div>
             <div id="split-file-list" class="file-list">No file selected</div>
-            <label for="page-range">Pages to extract (e.g., 1, 3, 5-7):</label>
+            
+            <label class="checkbox-group">
+                <input type="checkbox" id="split-all-checkbox">
+                Split into individual single-page files
+            </label>
+
+            <label for="page-range" id="page-range-label">Pages to extract (e.g., 1, 3, 5-7):</label>
             <input type="text" id="page-range" placeholder="1, 3, 5-7">
             <button id="btn-split" disabled>Split</button>
         </div>
@@ -209,7 +232,7 @@
                 return;
             }
 
-            // 1. Collect files cumulatively and tag with a unique ID
+            // Collect files cumulatively and tag with a unique ID
             newFiles.forEach(file => {
                 file.uniqueId = 'pdf-' + Math.random().toString(36).substr(2, 9);
                 filesToCombine.push(file);
@@ -220,7 +243,7 @@
 
         let draggedItem = null;
 
-        // 2. Render and manage sorting of list items
+        // Render and manage sorting of list items
         function renderCombineList() {
             const listContainer = document.getElementById('combine-file-list');
             listContainer.innerHTML = '';
@@ -260,7 +283,7 @@
                 item.addEventListener('dragend', () => {
                     item.classList.remove('dragging');
                     draggedItem = null;
-                    syncArrayOrder(); // Re-sync the core array with visual DOM layout
+                    syncArrayOrder();
                 });
 
                 item.addEventListener('dragover', (e) => {
@@ -279,7 +302,7 @@
             });
         }
 
-        // Synchronize the backing array with the updated visual DOM order
+        // Synchronize backing array with updated DOM order
         function syncArrayOrder() {
             const items = Array.from(document.querySelectorAll('#combine-file-list .file-item'));
             const sortedArray = [];
@@ -291,13 +314,13 @@
             filesToCombine = sortedArray;
         }
 
-        // Executing the merge operation
+        // Executing merge operation
         document.getElementById('btn-combine').addEventListener('click', async () => {
             try {
                 const mergedPdf = await PDFDocument.create();
                 for (const file of filesToCombine) {
                     const arrayBuffer = await file.arrayBuffer();
-                   const pdf = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+                    const pdf = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
                     const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
                     copiedPages.forEach((page) => mergedPdf.addPage(page));
                 }
@@ -315,8 +338,22 @@
         const splitDropZone = document.getElementById('split-drop-zone');
         const splitFileList = document.getElementById('split-file-list');
         const btnSplit = document.getElementById('btn-split');
+        const splitAllCheckbox = document.getElementById('split-all-checkbox');
+        const pageRangeInput = document.getElementById('page-range');
 
-		renderSplitFile();
+        // Checkbox Toggle Handler
+        splitAllCheckbox.addEventListener('change', () => {
+            if (splitAllCheckbox.checked) {
+                pageRangeInput.disabled = true;
+                pageRangeInput.value = '';
+                btnSplit.innerText = 'Split All Pages';
+            } else {
+                pageRangeInput.disabled = false;
+                btnSplit.innerText = 'Split';
+            }
+        });
+
+        renderSplitFile();
         splitDropZone.addEventListener('dragover', (e) => { preventDefaults(e); splitDropZone.classList.add('dragover'); });
         splitDropZone.addEventListener('dragleave', (e) => { preventDefaults(e); splitDropZone.classList.remove('dragover'); });
         
@@ -331,7 +368,7 @@
             }
 
             fileToSplit = files[0];
-			renderSplitFile();
+            renderSplitFile();
         });
 
         function parsePageRange(rangeStr, maxPages) {
@@ -355,65 +392,78 @@
             }
             return Array.from(pages).sort((a, b) => a - b);
         }
-		
-		function renderSplitFile() {
-				splitFileList.innerHTML = "";
+        
+        function renderSplitFile() {
+            splitFileList.innerHTML = "";
 
-				// No file selected
-				if (!fileToSplit) {
-					splitFileList.innerHTML = "No file selected";
-					btnSplit.disabled = true;
-					return;
-				}
+            if (!fileToSplit) {
+                splitFileList.innerHTML = "No file selected";
+                btnSplit.disabled = true;
+                return;
+            }
 
-				// Create file row
-				const item = document.createElement("div");
-				item.className = "file-item";
-				item.style.cursor = "default";
+            const item = document.createElement("div");
+            item.className = "file-item";
+            item.style.cursor = "default";
 
-				item.innerHTML = `
-					<span class="file-name" title="${fileToSplit.name}">${fileToSplit.name}</span>
-					<span class="remove-btn">&times;</span>
-				`;
+            item.innerHTML = `
+                <span class="file-name" title="${fileToSplit.name}">${fileToSplit.name}</span>
+                <span class="remove-btn">&times;</span>
+            `;
 
-				// Remove button
-				item.querySelector(".remove-btn").addEventListener("click", () => {
-					fileToSplit = null;
-					renderSplitFile();
+            item.querySelector(".remove-btn").addEventListener("click", () => {
+                fileToSplit = null;
+                renderSplitFile();
+                document.getElementById("page-range").value = "";
+            });
 
-					// Optional: clear page range textbox
-					document.getElementById("page-range").value = "";
-				});
-
-				splitFileList.appendChild(item);
-				btnSplit.disabled = false;
-		}
+            splitFileList.appendChild(item);
+            btnSplit.disabled = false;
+        }
 
         btnSplit.addEventListener('click', async () => {
-            const rangeInput = document.getElementById('page-range').value;
-            if (!rangeInput) {
-                alert('Please enter a page range.');
+            const isSplitAll = splitAllCheckbox.checked;
+
+            if (!isSplitAll && !pageRangeInput.value.trim()) {
+                alert('Please enter a page range or select "Split into individual single-page files".');
                 return;
             }
 
             try {
                 const arrayBuffer = await fileToSplit.arrayBuffer();
-                const originalPdf = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true })
+                const originalPdf = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
                 const maxPages = originalPdf.getPageCount();
-                
-                const pagesToExtract = parsePageRange(rangeInput, maxPages);
-                
-                if (pagesToExtract.length === 0) {
-                    alert('Invalid page range or pages exceed document length.');
-                    return;
+                const baseName = fileToSplit.name.replace(/\.pdf$/i, '');
+
+                if (isSplitAll) {
+                    // Extract every page as a separate PDF file
+                    for (let i = 0; i < maxPages; i++) {
+                        const newPdf = await PDFDocument.create();
+                        const [copiedPage] = await newPdf.copyPages(originalPdf, [i]);
+                        newPdf.addPage(copiedPage);
+
+                        const pdfBytes = await newPdf.save();
+                        downloadPDF(pdfBytes, `${baseName}_page_${i + 1}.pdf`);
+                        
+                        // Short delay between downloads to prevent browser download block
+                        await new Promise(resolve => setTimeout(resolve, 150));
+                    }
+                } else {
+                    // Range extraction logic
+                    const pagesToExtract = parsePageRange(pageRangeInput.value, maxPages);
+                    
+                    if (pagesToExtract.length === 0) {
+                        alert('Invalid page range or pages exceed document length.');
+                        return;
+                    }
+
+                    const newPdf = await PDFDocument.create();
+                    const copiedPages = await newPdf.copyPages(originalPdf, pagesToExtract);
+                    copiedPages.forEach((page) => newPdf.addPage(page));
+
+                    const pdfBytes = await newPdf.save();
+                    downloadPDF(pdfBytes, `${baseName}_split.pdf`);
                 }
-
-                const newPdf = await PDFDocument.create();
-                const copiedPages = await newPdf.copyPages(originalPdf, pagesToExtract);
-                copiedPages.forEach((page) => newPdf.addPage(page));
-
-                const pdfBytes = await newPdf.save();
-                downloadPDF(pdfBytes, 'split.pdf');
             } catch (error) {
                 alert('Error splitting PDF: ' + error.message);
             }
